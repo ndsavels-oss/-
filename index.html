@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>СУПР</title>
+<style>
+  :root { --bg:#0b0d0c; --card:#151917; --line:#252b28; --text:#e8efe9; --dim:#8a958e;
+          --green:#3ddc84; --blue:#4aa8ff; --red:#ff5a4f; --yellow:#f5c542; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .wrap { max-width:980px; margin:0 auto; padding:20px 16px 40px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .logo { font-size:44px; font-weight:800; letter-spacing:10px; color:var(--green);
+          text-shadow:0 0 12px rgba(61,220,132,.7), 0 0 28px rgba(61,220,132,.35); }
+  .logo.off { color:#2a3a31; text-shadow:none; }
+  .sub { color:var(--dim); font-size:13px; margin-top:2px; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  button { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px;
+           padding:10px 14px; font-size:15px; cursor:pointer; }
+  button.main { background:var(--green); color:#04140a; border:none; font-weight:700; }
+  button:disabled { opacity:.4; cursor:default; }
+  .status { margin:14px 0 18px; font-size:14px; color:var(--dim); }
+  .status b { color:var(--text); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; }
+  .card h3 { margin:0 0 10px; font-size:14px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+  .pot { display:flex; align-items:center; gap:14px; }
+  .ring { width:86px; height:86px; flex:none; }
+  .big { font-size:30px; font-weight:700; }
+  .note { font-size:13px; color:var(--dim); }
+  .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); font-size:15px; }
+  .row:last-child { border-bottom:none; }
+  .pill { padding:2px 10px; border-radius:20px; font-size:13px; font-weight:600; }
+  .on  { background:rgba(61,220,132,.15); color:var(--green); }
+  .off2 { background:#202623; color:var(--dim); }
+  .term { background:#050706; border:1px solid var(--line); border-radius:12px; padding:12px;
+          font-family:ui-monospace, Menlo, monospace; font-size:13px; color:#9fe7bd; height:190px; overflow:auto; white-space:pre-wrap; }
+  .send { display:flex; gap:8px; margin-top:8px; }
+  .send input { flex:1; background:#050706; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px; font-size:15px; }
+  h2 { font-size:16px; color:var(--dim); margin:22px 0 10px; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="logo off" id="logo">СУПР</div>
+      <div class="sub">система умного полива растений</div>
+    </div>
+    <div class="btns">
+      <button class="main" id="bConnect">Подключить</button>
+      <button id="bDemo">Демо</button>
+    </div>
+  </header>
+
+  <div class="status" id="status">Не подключено. Нажмите «Подключить» и выберите HC-06.</div>
+
+  <div class="grid">
+    <div class="card"><h3>Горшок 1</h3><div class="pot" id="pot0"></div></div>
+    <div class="card"><h3>Горшок 2</h3><div class="pot" id="pot1"></div></div>
+    <div class="card"><h3>Горшок 3</h3><div class="pot" id="pot2"></div></div>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
+    <div class="card">
+      <h3>Воздух и свет</h3>
+      <div class="row"><span>Температура</span><b id="vT">—</b></div>
+      <div class="row"><span>Влажность</span><b id="vH">—</b></div>
+      <div class="row"><span>Свет</span><b id="vL">—</b></div>
+      <div class="row"><span>Время СУПР</span><b id="vTime">—</b></div>
+    </div>
+    <div class="card">
+      <h3>Устройства</h3>
+      <div class="row"><span>Клапан горшка 1</span><span class="pill off2" id="vK">закрыт</span></div>
+      <div class="row"><span>Лампа</span><span class="pill off2" id="vLamp">выкл</span></div>
+      <div class="btns" style="margin-top:12px">
+        <button class="main" id="bPoliv" disabled>Полить горшок 1</button>
+        <button id="bStatus" disabled>Обновить</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Терминал</h2>
+  <div class="term" id="term"></div>
+  <div class="send">
+    <input id="inCmd" placeholder="команда: s, p, h" autocomplete="off">
+    <button id="bSend" disabled>Отправить</button>
+  </div>
+
+</div>
+
+<script>
+// ===== 1. Bluetooth: номера "почтовых ящиков" модуля =====
+const SLUZHBA = 0xffe0;          // служба модуля
+const YASHCHIK = 0xffe1;         // характеристика: сюда пишем и отсюда читаем
+
+let ustroistvo = null;           // подключенный модуль
+let yashchik = null;             // характеристика FFE1
+let bufer = '';                  // сюда копим буквы, пока не придет конец строки
+let demoTaimer = null;
+const dekoder = new TextDecoder();
+const koder = new TextEncoder();
+
+const $ = id => document.getElementById(id);
+
+// ===== 2. Терминал: показываем строку внизу, старые уходят вверх =====
+function vTerminal(stroka) {
+  const t = $('term');
+  t.textContent += stroka + '\n';
+  if (t.textContent.length > 8000) t.textContent = t.textContent.slice(-6000);
+  t.scrollTop = t.scrollHeight;
+}
+
+// ===== 3. Кольцо с процентами для горшка =====
+function koltso(id, proc) {
+  const est = proc >= 0;
+  const p = est ? proc : 0;
+  const cvet = !est ? '#3a423e' : p < 35 ? 'var(--red)' : p < 60 ? 'var(--yellow)' : 'var(--green)';
+  const dlina = 2 * Math.PI * 36;
+  $(id).innerHTML =
+    `<svg class="ring" viewBox="0 0 86 86">
+       <circle cx="43" cy="43" r="36" fill="none" stroke="#252b28" stroke-width="9"/>
+       <circle cx="43" cy="43" r="36" fill="none" stroke="${cvet}" stroke-width="9" stroke-linecap="round"
+               stroke-dasharray="${dlina * p / 100} ${dlina}" transform="rotate(-90 43 43)"/>
+     </svg>
+     <div><div class="big">${est ? p + '%' : '—'}</div>
+     <div class="note">${!est ? 'датчик не отвечает' : p < 35 ? 'сухо, пора поливать' : p < 60 ? 'нормально' : 'влажно'}</div></div>`;
+}
+
+// ===== 4. Разбор строки данных от Uno: D,время,П1,П2,П3,темп,влаж,свет,клапан,лампа =====
+function razobrat(stroka) {
+  if (!stroka.startsWith('D,')) { vTerminal(stroka); return; }   // обычное сообщение - в терминал
+  const c = stroka.split(',');
+  if (c.length < 10) return;
+  $('vTime').textContent = c[1];
+  for (let i = 0; i < 3; i++) koltso('pot' + i, parseInt(c[2 + i]));
+  const t = parseInt(c[5]), h = parseInt(c[6]), lux = parseInt(c[7]);
+  $('vT').textContent = t > -99 ? t + ' °C' : 'нет';
+  $('vH').textContent = h >= 0 ? h + ' %' : 'нет';
+  $('vL').textContent = lux >= 0 ? lux + ' лк' : 'нет';
+  const k = c[8] === '1', l = c[9].trim() === '1';
+  $('vK').textContent = k ? 'ОТКРЫТ' : 'закрыт';  $('vK').className = 'pill ' + (k ? 'on' : 'off2');
+  $('vLamp').textContent = l ? 'ВКЛ' : 'выкл';    $('vLamp').className = 'pill ' + (l ? 'on' : 'off2');
+}
+
+// ===== 5. Пришел кусочек данных по Bluetooth (до 20 букв за раз) =====
+function prishlo(sobytie) {
+  bufer += dekoder.decode(sobytie.target.value, { stream: true });
+  let n;
+  while ((n = bufer.indexOf('\n')) >= 0) {        // есть целая строка - разбираем
+    const stroka = bufer.slice(0, n).replace('\r', '');
+    bufer = bufer.slice(n + 1);
+    if (stroka.length) razobrat(stroka);
+  }
+}
+
+// ===== 6. Отправить команду в Uno =====
+async function otpravit(tekst) {
+  if (demoTaimer) { vTerminal('> ' + tekst + '   (демо: команда никуда не ушла)'); return; }
+  if (!yashchik) return;
+  const dannye = koder.encode(tekst);
+  if (yashchik.writeValueWithoutResponse) await yashchik.writeValueWithoutResponse(dannye);
+  else await yashchik.writeValue(dannye);
+  vTerminal('> ' + tekst);
+}
+
+// ===== 7. Подключение =====
+async function podklyuchit() {
+  if (!navigator.bluetooth) {
+    $('status').innerHTML = '<b>Этот браузер не умеет Bluetooth.</b> На Mac откройте страницу в Chrome, на iPhone - в браузере Bluefy.';
+    return;
+  }
+  try {
+    ostanovitDemo();
+    $('status').textContent = 'Ищу модуль...';
+    ustroistvo = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SLUZHBA] });
+    ustroistvo.addEventListener('gattserverdisconnected', otklyuchilsya);
+    const server = await ustroistvo.gatt.connect();
+    const sluzhba = await server.getPrimaryService(SLUZHBA);
+    yashchik = await sluzhba.getCharacteristic(YASHCHIK);
+    await yashchik.startNotifications();                      // "присылай мне все, что придет"
+    yashchik.addEventListener('characteristicvaluechanged', prishlo);
+    $('status').innerHTML = 'Подключено: <b>' + (ustroistvo.name || 'модуль') + '</b>';
+    $('logo').classList.remove('off');
+    ['bPoliv', 'bStatus', 'bSend'].forEach(id => $(id).disabled = false);
+    vTerminal('Подключено к ' + (ustroistvo.name || 'модулю'));
+  } catch (e) {
+    $('status').textContent = 'Не получилось: ' + e.message;
+  }
+}
+
+function otklyuchilsya() {
+  yashchik = null;
+  $('status').textContent = 'Связь потеряна. Нажмите «Подключить» еще раз.';
+  $('logo').classList.add('off');
+  ['bPoliv', 'bStatus', 'bSend'].forEach(id => $(id).disabled = true);
+  vTerminal('Связь потеряна');
+}
+
+// ===== 8. Демо: придумываем данные, чтобы посмотреть страницу без Uno =====
+function zapustitDemo() {
+  if (demoTaimer) { ostanovitDemo(); return; }
+  let p = [62, 41, 18], sek = 0;
+  $('logo').classList.remove('off');
+  $('status').innerHTML = '<b>Демо:</b> данные придуманы, Uno не подключена.';
+  ['bPoliv', 'bStatus', 'bSend'].forEach(id => $(id).disabled = false);
+  $('bDemo').textContent = 'Стоп демо';
+  demoTaimer = setInterval(() => {
+    sek += 2;
+    p = p.map(x => Math.max(5, x - Math.random() * 0.6));
+    const d = new Date();
+    const vremya = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    const stroka = `D,${vremya},${p.map(Math.round).join(',')},23,${40 + Math.round(Math.random() * 3)},-1,${sek % 20 < 5 ? 1 : 0},1`;
+    vTerminal(stroka);
+    razobrat(stroka);
+  }, 2000);
+}
+
+function ostanovitDemo() {
+  if (!demoTaimer) return;
+  clearInterval(demoTaimer); demoTaimer = null;
+  $('bDemo').textContent = 'Демо';
+  $('logo').classList.add('off');
+  $('status').textContent = 'Не подключено. Нажмите «Подключить» и выберите HC-06.';
+  ['bPoliv', 'bStatus', 'bSend'].forEach(id => $(id).disabled = true);
+}
+
+// ===== 9. Кнопки =====
+$('bConnect').onclick = podklyuchit;
+$('bDemo').onclick = zapustitDemo;
+$('bPoliv').onclick = () => otpravit('p');
+$('bStatus').onclick = () => otpravit('s');
+$('bSend').onclick = () => { const v = $('inCmd').value.trim(); if (v) otpravit(v); $('inCmd').value = ''; };
+$('inCmd').addEventListener('keydown', e => { if (e.key === 'Enter') $('bSend').click(); });
+
+for (let i = 0; i < 3; i++) koltso('pot' + i, -1);
+</script>
+</body>
+</html>
